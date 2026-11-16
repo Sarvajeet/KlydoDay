@@ -1,0 +1,176 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidScheduleBlock(data) {
+      return data.userId is string &&
+             data.userId == request.auth.uid &&
+             data.userId.size() <= 128 &&
+             data.title is string &&
+             data.title.size() >= 1 &&
+             data.title.size() <= 80 &&
+             data.subtitle is string &&
+             data.subtitle.size() <= 120 &&
+             data.startMinutes is int &&
+             data.startMinutes >= 0 &&
+             data.startMinutes <= 1439 &&
+             data.durationMinutes is int &&
+             data.durationMinutes >= 5 &&
+             data.durationMinutes <= 720 &&
+             data.category in ['focus', 'wellness', 'family', 'meal', 'creative', 'rest', 'errand'] &&
+             data.colorHex is string &&
+             data.colorHex.size() == 7 &&
+             data.colorHex.matches('^#[0-9A-Fa-f]{6}$') &&
+             data.daysOfWeek is list &&
+             data.daysOfWeek.size() <= 7 &&
+             (data.daysOfWeek.size() == 0 || data.daysOfWeek[0] is string) &&
+             data.chimeEnabled is bool &&
+             data.completedDateKey is string &&
+             data.completedDateKey.size() <= 16;
+    }
+
+    function isValidDisplaySettings(data) {
+      return data.userId is string &&
+             data.userId == request.auth.uid &&
+             data.userId.size() <= 128 &&
+             data.activeKlydoId is string &&
+             data.activeKlydoId.size() >= 1 &&
+             data.activeKlydoId.size() <= 48 &&
+             data.autoCycleArt is bool &&
+             data.cycleIntervalMinutes is int &&
+             data.cycleIntervalMinutes >= 15 &&
+             data.cycleIntervalMinutes <= 1440 &&
+             data.pendulumStyle in ['brass', 'obsidian', 'terracotta', 'minimal'] &&
+             data.pendulumEnabled is bool &&
+             data.hourlyChimeEnabled is bool &&
+             data.blockChimeEnabled is bool &&
+             data.keepScreenOn is bool &&
+             data.nightModeEnabled is bool &&
+             data.nightStartMinutes is int &&
+             data.nightStartMinutes >= 0 &&
+             data.nightStartMinutes <= 1439 &&
+             data.nightEndMinutes is int &&
+             data.nightEndMinutes >= 0 &&
+             data.nightEndMinutes <= 1439 &&
+             data.clockFormat24h is bool &&
+             (!('showFrame' in data) || data.showFrame is bool) &&
+             data.favoriteKlydoIds is list &&
+             data.favoriteKlydoIds.size() <= 20 &&
+             (data.favoriteKlydoIds.size() == 0 || data.favoriteKlydoIds[0] is string);
+    }
+
+    match /users/{userId}/schedule_blocks/{blockId} {
+      allow get: if isSignedIn() && request.auth.uid == userId && isValidId(blockId);
+      allow list: if isSignedIn() && request.auth.uid == userId;
+
+      allow create: if isSignedIn() &&
+                       request.auth.uid == userId &&
+                       isValidId(blockId) &&
+                       incoming().keys().hasAll([
+                         'userId', 'title', 'subtitle', 'startMinutes', 'durationMinutes',
+                         'category', 'colorHex', 'daysOfWeek', 'chimeEnabled',
+                         'completedDateKey', 'createdAt', 'updatedAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'userId', 'title', 'subtitle', 'startMinutes', 'durationMinutes',
+                         'category', 'colorHex', 'daysOfWeek', 'chimeEnabled',
+                         'completedDateKey', 'createdAt', 'updatedAt'
+                       ]) &&
+                       isValidScheduleBlock(incoming()) &&
+                       incoming().createdAt is timestamp &&
+                       incoming().createdAt <= request.time &&
+                       incoming().updatedAt is timestamp &&
+                       incoming().updatedAt <= request.time;
+
+      allow update: if isSignedIn() &&
+                       request.auth.uid == userId &&
+                       isValidId(blockId) &&
+                       isValidScheduleBlock(incoming()) &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().updatedAt is timestamp &&
+                       incoming().updatedAt <= request.time &&
+                       (
+                         incoming().diff(existing()).affectedKeys().hasOnly(['completedDateKey', 'updatedAt']) ||
+                         incoming().diff(existing()).affectedKeys().hasOnly([
+                           'title', 'subtitle', 'startMinutes', 'durationMinutes',
+                           'category', 'colorHex', 'daysOfWeek', 'chimeEnabled',
+                           'completedDateKey', 'updatedAt'
+                         ])
+                       );
+
+      allow delete: if isSignedIn() && request.auth.uid == userId && isValidId(blockId);
+    }
+
+    match /users/{userId}/display_settings/{settingId} {
+      allow get: if isSignedIn() && request.auth.uid == userId && isValidId(settingId);
+      allow list: if isSignedIn() && request.auth.uid == userId;
+
+      allow create: if isSignedIn() &&
+                       request.auth.uid == userId &&
+                       isValidId(settingId) &&
+                       incoming().keys().hasAll([
+                         'userId', 'activeKlydoId', 'autoCycleArt', 'cycleIntervalMinutes',
+                         'pendulumStyle', 'pendulumEnabled', 'hourlyChimeEnabled',
+                         'blockChimeEnabled', 'keepScreenOn', 'nightModeEnabled',
+                         'nightStartMinutes', 'nightEndMinutes', 'clockFormat24h',
+                         'showFrame', 'favoriteKlydoIds', 'createdAt', 'updatedAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'userId', 'activeKlydoId', 'autoCycleArt', 'cycleIntervalMinutes',
+                         'pendulumStyle', 'pendulumEnabled', 'hourlyChimeEnabled',
+                         'blockChimeEnabled', 'keepScreenOn', 'nightModeEnabled',
+                         'nightStartMinutes', 'nightEndMinutes', 'clockFormat24h',
+                         'showFrame', 'favoriteKlydoIds', 'createdAt', 'updatedAt'
+                       ]) &&
+                       isValidDisplaySettings(incoming()) &&
+                       incoming().createdAt is timestamp &&
+                       incoming().createdAt <= request.time &&
+                       incoming().updatedAt is timestamp &&
+                       incoming().updatedAt <= request.time;
+
+      allow update: if isSignedIn() &&
+                       request.auth.uid == userId &&
+                       isValidId(settingId) &&
+                       isValidDisplaySettings(incoming()) &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().updatedAt is timestamp &&
+                       incoming().updatedAt <= request.time &&
+                       (
+                         incoming().diff(existing()).affectedKeys().hasOnly(['activeKlydoId', 'updatedAt']) ||
+                         incoming().diff(existing()).affectedKeys().hasOnly(['favoriteKlydoIds', 'updatedAt']) ||
+                         incoming().diff(existing()).affectedKeys().hasOnly([
+                           'activeKlydoId', 'autoCycleArt', 'cycleIntervalMinutes',
+                           'pendulumStyle', 'pendulumEnabled', 'hourlyChimeEnabled',
+                           'blockChimeEnabled', 'keepScreenOn', 'nightModeEnabled',
+                           'nightStartMinutes', 'nightEndMinutes', 'clockFormat24h',
+                           'showFrame', 'favoriteKlydoIds', 'updatedAt'
+                         ])
+                       );
+
+      allow delete: if isSignedIn() && request.auth.uid == userId && isValidId(settingId);
+    }
+  }
+}

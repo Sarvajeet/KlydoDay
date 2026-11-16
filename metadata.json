@@ -1,0 +1,6 @@
+{
+  "name": "KlydoDay",
+  "description": "Tablet visual art clock, animated pendulum, and daily routine scheduler inspired by Klydoclock.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

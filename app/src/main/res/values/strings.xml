@@ -1,0 +1,17 @@
+<resources>
+    <string name="app_name">KlydoDay</string>
+    <string name="auth_title">Permanent Visual Clock &amp; Daily Scheduler</string>
+    <string name="auth_subtitle">Sign in with Google to keep your daily visual routines, custom Klydo art faces, and home display settings synced across devices.</string>
+    <string name="auth_google_button">Sign in with Google</string>
+    <string name="auth_checking_session">Restoring display session…</string>
+    <string name="auth_signing_in">Connecting…</string>
+    <string name="klydo_gallery_title">Klydo Art Gallery</string>
+    <string name="display_settings_title">Home Display &amp; Chimes</string>
+    <string name="add_block_title">New Schedule Block</string>
+    <string name="edit_block_title">Edit Schedule Block</string>
+    <string name="snap_to_now">Snap to Now</string>
+    <string name="starter_routine_cta">Load Daily Starter Rhythm</string>
+    <string name="empty_schedule_title">Your Visual Day Awaits</string>
+    <string name="empty_schedule_subtitle">Add time blocks to illuminate your clock bezel with color-coded routines, or start with a balanced daily rhythm.</string>
+    <string name="sign_out">Sign Out</string>
+</resources>

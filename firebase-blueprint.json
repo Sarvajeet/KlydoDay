@@ -1,0 +1,187 @@
+{
+  "entities": {
+    "ScheduleBlock": {
+      "title": "ScheduleBlock",
+      "description": "A visual time-blocked routine or event shown on the KlydoDay clock dial and daily timeline.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Authenticated owner UID matching request.auth.uid."
+        },
+        "title": {
+          "type": "string",
+          "description": "Short display title for the scheduled block."
+        },
+        "subtitle": {
+          "type": "string",
+          "description": "Optional note or room context."
+        },
+        "startMinutes": {
+          "type": "integer",
+          "description": "Start time in minutes from midnight (0-1439)."
+        },
+        "durationMinutes": {
+          "type": "integer",
+          "description": "Duration in minutes (5-720)."
+        },
+        "category": {
+          "type": "string",
+          "enum": ["focus", "wellness", "family", "meal", "creative", "rest", "errand"],
+          "description": "Visual category determining dial iconography."
+        },
+        "colorHex": {
+          "type": "string",
+          "description": "Hex color string (#RRGGBB) used for the clock wedge and timeline card."
+        },
+        "daysOfWeek": {
+          "type": "array",
+          "description": "Active weekday codes (MON..SUN); empty array means every day."
+        },
+        "chimeEnabled": {
+          "type": "boolean",
+          "description": "Whether to play a chime when this schedule block begins."
+        },
+        "completedDateKey": {
+          "type": "string",
+          "description": "ISO date string (YYYY-MM-DD) if marked complete for that day, or empty string."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp written with FieldValue.serverTimestamp()."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp written with FieldValue.serverTimestamp()."
+        }
+      },
+      "required": [
+        "userId",
+        "title",
+        "subtitle",
+        "startMinutes",
+        "durationMinutes",
+        "category",
+        "colorHex",
+        "daysOfWeek",
+        "chimeEnabled",
+        "completedDateKey",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "DisplaySettings": {
+      "title": "DisplaySettings",
+      "description": "Permanent home display preferences including active Klydo artwork, pendulum finish, chime toggles, and night mode.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Authenticated owner UID matching request.auth.uid."
+        },
+        "activeKlydoId": {
+          "type": "string",
+          "description": "Identifier of the active Klydo animated art face."
+        },
+        "autoCycleArt": {
+          "type": "boolean",
+          "description": "Whether Klydo art faces rotate automatically."
+        },
+        "cycleIntervalMinutes": {
+          "type": "integer",
+          "description": "Minutes between automatic Klydo art rotations (15-1440)."
+        },
+        "pendulumStyle": {
+          "type": "string",
+          "enum": ["brass", "obsidian", "terracotta", "minimal"],
+          "description": "Visual finish of the digital pendulum."
+        },
+        "pendulumEnabled": {
+          "type": "boolean",
+          "description": "Whether the animated pendulum pane is active."
+        },
+        "hourlyChimeEnabled": {
+          "type": "boolean",
+          "description": "Whether to sound a subtle harmonic chime on the hour."
+        },
+        "blockChimeEnabled": {
+          "type": "boolean",
+          "description": "Whether to sound a chime when a scheduled block starts."
+        },
+        "keepScreenOn": {
+          "type": "boolean",
+          "description": "Keeps the tablet screen awake for permanent home display use."
+        },
+        "nightModeEnabled": {
+          "type": "boolean",
+          "description": "Automatically dims display and mutes chimes during sleep hours."
+        },
+        "nightStartMinutes": {
+          "type": "integer",
+          "description": "Night mode start time in minutes from midnight (0-1439)."
+        },
+        "nightEndMinutes": {
+          "type": "integer",
+          "description": "Night mode end time in minutes from midnight (0-1439)."
+        },
+        "clockFormat24h": {
+          "type": "boolean",
+          "description": "Use 24-hour digital time format in the scheduler readout."
+        },
+        "showFrame": {
+          "type": "boolean",
+          "description": "Whether the Baltic-birch plywood and charcoal clock cabinet frame is rendered around the dial."
+        },
+        "favoriteKlydoIds": {
+          "type": "array",
+          "description": "Bounded list of up to 20 favorited Klydo artwork IDs."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp written with FieldValue.serverTimestamp()."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp written with FieldValue.serverTimestamp()."
+        }
+      },
+      "required": [
+        "userId",
+        "activeKlydoId",
+        "autoCycleArt",
+        "cycleIntervalMinutes",
+        "pendulumStyle",
+        "pendulumEnabled",
+        "hourlyChimeEnabled",
+        "blockChimeEnabled",
+        "keepScreenOn",
+        "nightModeEnabled",
+        "nightStartMinutes",
+        "nightEndMinutes",
+        "clockFormat24h",
+        "showFrame",
+        "favoriteKlydoIds",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}/schedule_blocks/{blockId}": {
+      "schema": {
+        "$ref": "#/entities/ScheduleBlock"
+      },
+      "description": "User-owned visual schedule blocks rendered around the clock dial and in the daily routine timeline."
+    },
+    "/users/{userId}/display_settings/{settingId}": {
+      "schema": {
+        "$ref": "#/entities/DisplaySettings"
+      },
+      "description": "User-owned home display configuration and Klydo artwork preferences."
+    }
+  }
+}

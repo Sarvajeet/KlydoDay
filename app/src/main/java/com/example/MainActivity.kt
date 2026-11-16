@@ -7,12 +7,21 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.IntentCompat
 import androidx.credentials.CredentialManager
@@ -20,6 +29,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.firestore.KlydoRepository
 import com.example.data.local.GuestKlydoRepository
 import com.example.ui.KlydoDashboardRoute
+import com.example.ui.KlydoLoadScreen
 import com.example.ui.auth.attemptAutoSignIn
 import com.example.ui.theme.KlydoDayTheme
 import com.google.firebase.Firebase
@@ -35,6 +45,7 @@ import kotlinx.coroutines.flow.flowOf
 
 class MainActivity : ComponentActivity() {
     private val sharedVideoUriFlow = MutableStateFlow<Uri?>(null)
+    private val sharedAudioUriFlow = MutableStateFlow<Uri?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -43,10 +54,13 @@ class MainActivity : ComponentActivity() {
         handleIncomingShareIntent(intent)
         setContent {
             val sharedVideoUri by sharedVideoUriFlow.collectAsStateWithLifecycle()
+            val sharedAudioUri by sharedAudioUriFlow.collectAsStateWithLifecycle()
             KlydoDayTheme {
                 AppNavigation(
                     sharedVideoUri = sharedVideoUri,
-                    onConsumeSharedVideo = { sharedVideoUriFlow.value = null }
+                    onConsumeSharedVideo = { sharedVideoUriFlow.value = null },
+                    sharedAudioUri = sharedAudioUri,
+                    onConsumeSharedAudio = { sharedAudioUriFlow.value = null }
                 )
             }
         }
@@ -59,12 +73,13 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleIncomingShareIntent(intent: Intent?) {
-        if (intent?.action == Intent.ACTION_SEND && intent.type?.startsWith("video/") == true) {
-            val uri = IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java)
-                ?: intent.clipData?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.uri
-            if (uri != null) {
-                sharedVideoUriFlow.value = uri
-            }
+        if (intent?.action != Intent.ACTION_SEND) return
+        val uri = IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java)
+            ?: intent.clipData?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.uri
+            ?: return
+        when {
+            intent.type?.startsWith("video/") == true -> sharedVideoUriFlow.value = uri
+            intent.type?.startsWith("audio/") == true -> sharedAudioUriFlow.value = uri
         }
     }
 
@@ -104,7 +119,9 @@ internal fun FirebaseAuth.authStateFlow(): Flow<FirebaseUser?> = callbackFlow {
 @Composable
 fun AppNavigation(
     sharedVideoUri: Uri? = null,
-    onConsumeSharedVideo: () -> Unit = {}
+    onConsumeSharedVideo: () -> Unit = {},
+    sharedAudioUri: Uri? = null,
+    onConsumeSharedAudio: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -154,24 +171,41 @@ fun AppNavigation(
         }
     }
 
-    if (user == null) {
-        key(GuestKlydoRepository.GUEST_USER_ID) {
-            KlydoDashboardRoute(
-                sessionKey = GuestKlydoRepository.GUEST_USER_ID,
-                isGuest = true,
-                userEmail = null,
-                sharedVideoUri = sharedVideoUri,
-                onConsumeSharedVideo = onConsumeSharedVideo
-            )
+    var showLoadPage by rememberSaveable { mutableStateOf(true) }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        if (user == null) {
+            key(GuestKlydoRepository.GUEST_USER_ID) {
+                KlydoDashboardRoute(
+                    sessionKey = GuestKlydoRepository.GUEST_USER_ID,
+                    isGuest = true,
+                    userEmail = null,
+                    sharedVideoUri = sharedVideoUri,
+                    onConsumeSharedVideo = onConsumeSharedVideo,
+                    sharedAudioUri = sharedAudioUri,
+                    onConsumeSharedAudio = onConsumeSharedAudio
+                )
+            }
+        } else {
+            key(user.uid) {
+                KlydoDashboardRoute(
+                    sessionKey = user.uid,
+                    isGuest = false,
+                    userEmail = user.email,
+                    sharedVideoUri = sharedVideoUri,
+                    onConsumeSharedVideo = onConsumeSharedVideo,
+                    sharedAudioUri = sharedAudioUri,
+                    onConsumeSharedAudio = onConsumeSharedAudio
+                )
+            }
         }
-    } else {
-        key(user.uid) {
-            KlydoDashboardRoute(
-                sessionKey = user.uid,
-                isGuest = false,
-                userEmail = user.email,
-                sharedVideoUri = sharedVideoUri,
-                onConsumeSharedVideo = onConsumeSharedVideo
+
+        AnimatedVisibility(
+            visible = showLoadPage,
+            exit = fadeOut(animationSpec = tween(durationMillis = 420))
+        ) {
+            KlydoLoadScreen(
+                onFinished = { showLoadPage = false }
             )
         }
     }

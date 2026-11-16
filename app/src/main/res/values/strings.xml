@@ -14,4 +14,12 @@
     <string name="empty_schedule_title">Your Visual Day Awaits</string>
     <string name="empty_schedule_subtitle">Add time blocks to illuminate your clock bezel with color-coded routines, or start with a balanced daily rhythm.</string>
     <string name="sign_out">Sign Out</string>
+    <string name="dream_service_label">KlydoDay Clock</string>
+    <string name="dream_tap_wake_hint">Tap outside clock to wake • Tap dial to switch art</string>
+    <string name="wallpaper_service_label">KlydoDay Live Clock</string>
+    <string name="wallpaper_description">Animated kinetic clock dial &amp; swinging pendulum synced with your active watch face and daily routine arcs.</string>
+    <string name="set_live_wallpaper_cta">Set Lock &amp; Home Wallpaper</string>
+    <string name="open_dream_settings_cta">Charging / Dock Screen Saver</string>
+    <string name="developed_by_credit">developed by Sarvajeet Gada</string>
+    <string name="splash_tagline">Kinetic Visual Clock &amp; Daily Rhythm</string>
 </resources>

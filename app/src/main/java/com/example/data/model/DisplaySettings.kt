@@ -440,7 +440,7 @@ data class DisplaySettings(
     val nightStartMinutes: Long = 1320L,
     val nightEndMinutes: Long = 420L,
     val clockFormat24h: Boolean = false,
-    val showFrame: Boolean = true,
+    val showFrame: Boolean = false,
     val favoriteKlydoIds: List<String> = listOf("bioluminescent_jelly"),
     @ServerTimestamp val createdAt: Timestamp? = null,
     @ServerTimestamp val updatedAt: Timestamp? = null

@@ -3,7 +3,11 @@ package com.example.ui.viewmodel
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.audio.ChimeInterval
 import com.example.audio.ChimePlayer
+import com.example.audio.ChimeScheduleEvaluator
+import com.example.audio.ChimeTone
+import com.example.audio.ChimeTriggerKind
 import com.example.data.KlydoDataSource
 import com.example.data.firestore.KlydoRepository
 import com.example.data.model.DisplaySettings
@@ -22,6 +26,7 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.io.File
 import java.util.Calendar
 import java.util.Locale
 
@@ -83,6 +88,10 @@ class KlydoViewModel(
     val statusBanner: StateFlow<String?> = _statusBanner.asStateFlow()
 
     private val _availableFaceIds = MutableStateFlow(KlydoArtCatalog.all.map { it.id })
+    private var configuredChimeInterval: ChimeInterval = ChimeInterval.EVERY_1_HOUR
+    private var configuredChimeTone: ChimeTone = ChimeTone.WESTMINSTER
+    private var configuredStrikeHourCount: Boolean = false
+    private var configuredCustomChimeFile: File? = null
 
     private var lastChimedHourKey: String = ""
     private var lastChimedBlockKey: String = ""
@@ -110,14 +119,33 @@ class KlydoViewModel(
         val dayCode = dayCodeFromCalendar(cal)
 
         val isNight = isMinuteInNightWindow(minuteOfDay, settings)
-        if (!isNight && second <= 1) {
-            val hourKey = "$dateKey-$hour"
-            if (minute == 0 && settings.hourlyChimeEnabled && hourKey != lastChimedHourKey) {
-                lastChimedHourKey = hourKey
-                ChimePlayer.playHourlyChime()
+        if (!isNight) {
+            val effectiveInterval = ChimeScheduleEvaluator.effectiveInterval(
+                hourlyChimeEnabled = settings.hourlyChimeEnabled,
+                configuredInterval = configuredChimeInterval
+            )
+            val trigger = ChimeScheduleEvaluator.evaluate(
+                nowMillis = now,
+                interval = effectiveInterval,
+                settings = settings,
+                lastChimeKey = lastChimedHourKey
+            )
+            if (trigger != null) {
+                lastChimedHourKey = trigger.dedupKey
+                when (trigger.kind) {
+                    ChimeTriggerKind.FULL_HOUR -> ChimePlayer.playHourlyChime(
+                        tone = configuredChimeTone,
+                        strikeHourCount = if (configuredStrikeHourCount) trigger.hour12 else 0,
+                        customFile = configuredCustomChimeFile
+                    )
+                    ChimeTriggerKind.SUB_INTERVAL -> ChimePlayer.playSubIntervalChime(
+                        tone = configuredChimeTone,
+                        customFile = configuredCustomChimeFile
+                    )
+                }
             }
 
-            if (settings.blockChimeEnabled) {
+            if (second <= 1 && settings.blockChimeEnabled) {
                 val blocks = (scheduleBlocksState.value as? UiState.Success)?.data.orEmpty()
                 val startingBlock = blocks.firstOrNull { block ->
                     block.chimeEnabled &&
@@ -154,6 +182,18 @@ class KlydoViewModel(
         if (ids.isNotEmpty()) {
             _availableFaceIds.value = ids
         }
+    }
+
+    fun updateChimeConfig(
+        interval: ChimeInterval,
+        tone: ChimeTone,
+        strikeHourCount: Boolean,
+        customChimeFile: File?
+    ) {
+        configuredChimeInterval = interval
+        configuredChimeTone = tone
+        configuredStrikeHourCount = strikeHourCount
+        configuredCustomChimeFile = customChimeFile
     }
 
     fun adjustScrubMinutes(deltaMinutes: Float) {
@@ -309,8 +349,16 @@ class KlydoViewModel(
         }
     }
 
-    fun testChime() {
-        ChimePlayer.playHourlyChime()
+    fun testChime(
+        tone: ChimeTone = configuredChimeTone,
+        strikeHourExample: Int = if (configuredStrikeHourCount) 2 else 0,
+        customFile: File? = configuredCustomChimeFile
+    ) {
+        ChimePlayer.playHourlyChime(
+            tone = tone,
+            strikeHourCount = strikeHourExample,
+            customFile = customFile
+        )
     }
 
     companion object {

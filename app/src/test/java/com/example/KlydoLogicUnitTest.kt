@@ -75,7 +75,8 @@ class KlydoLogicUnitTest {
         val defaultSettings = DisplaySettings()
         assertEquals(PendulumStyle.OBSIDIAN.key, defaultSettings.pendulumStyle)
         assertEquals("bioluminescent_jelly", defaultSettings.activeKlydoId)
-        assertTrue(defaultSettings.showFrame)
+        org.junit.Assert.assertFalse(defaultSettings.showFrame)
+        org.junit.Assert.assertFalse(com.example.data.local.ClockSurfaceState().showFrame)
     }
 
     @Test

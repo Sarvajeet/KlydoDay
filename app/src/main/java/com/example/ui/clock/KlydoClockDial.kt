@@ -58,7 +58,7 @@ fun KlydoClockCabinet(
     klydoId: String,
     pendulumStyle: PendulumStyle,
     pendulumEnabled: Boolean,
-    showFrame: Boolean = true,
+    showFrame: Boolean = false,
     blocksForDay: List<ScheduleBlock>,
     scrubOffsetMinutes: Float,
     isNightMode: Boolean,

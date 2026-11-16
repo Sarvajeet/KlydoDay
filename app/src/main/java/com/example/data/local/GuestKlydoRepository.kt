@@ -237,7 +237,7 @@ class GuestKlydoRepository(private val context: Context) : KlydoDataSource {
                 nightStartMinutes = obj.optLong("nightStartMinutes", 1320L),
                 nightEndMinutes = obj.optLong("nightEndMinutes", 420L),
                 clockFormat24h = obj.optBoolean("clockFormat24h", false),
-                showFrame = obj.optBoolean("showFrame", true),
+                showFrame = obj.optBoolean("showFrame", false),
                 favoriteKlydoIds = favs
             )
         } catch (_: Exception) {

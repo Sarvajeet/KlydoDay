@@ -77,7 +77,12 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.R
+import com.example.audio.ChimeInterval
+import com.example.audio.ChimeTone
+import com.example.audio.KlydoChimeScheduler
 import com.example.data.firestore.KlydoRepository
+import com.example.data.local.ClockSurfaceState
+import com.example.data.local.ClockSurfaceStore
 import com.example.data.local.GuestKlydoRepository
 import com.example.data.local.WatchFaceLibraryStore
 import com.example.data.model.KlydoArtCatalog
@@ -119,7 +124,9 @@ fun KlydoDashboardRoute(
     isGuest: Boolean,
     userEmail: String?,
     sharedVideoUri: Uri? = null,
-    onConsumeSharedVideo: () -> Unit = {}
+    onConsumeSharedVideo: () -> Unit = {},
+    sharedAudioUri: Uri? = null,
+    onConsumeSharedAudio: () -> Unit = {}
 ) {
     val viewModel: KlydoViewModel = viewModel(
         key = sessionKey,
@@ -148,7 +155,9 @@ fun KlydoDashboardRoute(
         isGuest = isGuest,
         userEmail = userEmail,
         sharedVideoUri = sharedVideoUri,
-        onConsumeSharedVideo = onConsumeSharedVideo
+        onConsumeSharedVideo = onConsumeSharedVideo,
+        sharedAudioUri = sharedAudioUri,
+        onConsumeSharedAudio = onConsumeSharedAudio
     )
 }
 
@@ -158,7 +167,9 @@ fun KlydoDashboardScreen(
     isGuest: Boolean,
     userEmail: String?,
     sharedVideoUri: Uri? = null,
-    onConsumeSharedVideo: () -> Unit = {}
+    onConsumeSharedVideo: () -> Unit = {},
+    sharedAudioUri: Uri? = null,
+    onConsumeSharedAudio: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -166,6 +177,10 @@ fun KlydoDashboardScreen(
     val libraryStore = remember(context) { WatchFaceLibraryStore(context.applicationContext) }
     val libraryState by libraryStore.libraryFlow.collectAsStateWithLifecycle(
         initialValue = WatchFaceLibraryState()
+    )
+    val surfaceStore = remember(context) { ClockSurfaceStore(context.applicationContext) }
+    val surfaceState by surfaceStore.surfaceFlow.collectAsStateWithLifecycle(
+        initialValue = ClockSurfaceState()
     )
 
     val blocksState by viewModel.scheduleBlocksState.collectAsStateWithLifecycle()
@@ -203,6 +218,23 @@ fun KlydoDashboardScreen(
         }
     }
 
+    LaunchedEffect(sharedAudioUri) {
+        if (sharedAudioUri != null) {
+            onConsumeSharedAudio()
+            val res = surfaceStore.importCustomChime(sharedAudioUri)
+            res.onSuccess { imported ->
+                if (!settings.hourlyChimeEnabled) {
+                    viewModel.saveDisplaySettings(settings.copy(hourlyChimeEnabled = true))
+                }
+                val file = surfaceStore.resolveChimeFile(imported.audioFileName)
+                viewModel.testChime(tone = surfaceState.chimeTone, strikeHourExample = 0, customFile = file)
+                snackbarHostState.showSnackbar("Custom chime \"${imported.title}\" added & activated")
+            }.onFailure { err ->
+                snackbarHostState.showSnackbar(err.localizedMessage ?: "Could not import chime audio")
+            }
+        }
+    }
+
     DisposableEffect(settings.keepScreenOn) {
         val window = (context as? Activity)?.window
         if (window != null) {
@@ -235,6 +267,40 @@ fun KlydoDashboardScreen(
 
     val isNightMode = KlydoViewModel.isMinuteInNightWindow(effectiveMinuteOfDay, settings)
     val allBlocks = (blocksState as? UiState.Success)?.data.orEmpty()
+    LaunchedEffect(settings, allBlocks) {
+        surfaceStore.syncFromApp(settings, allBlocks)
+    }
+    val activeCustomChimeFile = remember(
+        surfaceState.selectedCustomChimeId,
+        surfaceState.customChimes
+    ) {
+        surfaceStore.resolveActiveCustomChimeFile(surfaceState)
+    }
+    LaunchedEffect(
+        settings.hourlyChimeEnabled,
+        surfaceState.chimeInterval,
+        surfaceState.chimeTone,
+        surfaceState.strikeHourCount,
+        surfaceState.chimeInBackground,
+        activeCustomChimeFile
+    ) {
+        viewModel.updateChimeConfig(
+            interval = surfaceState.chimeInterval,
+            tone = surfaceState.chimeTone,
+            strikeHourCount = surfaceState.strikeHourCount,
+            customChimeFile = activeCustomChimeFile
+        )
+        val effectiveInterval = if (settings.hourlyChimeEnabled) {
+            surfaceState.chimeInterval.takeIf { it != ChimeInterval.OFF } ?: ChimeInterval.EVERY_1_HOUR
+        } else {
+            ChimeInterval.OFF
+        }
+        KlydoChimeScheduler.syncSchedule(
+            context = context.applicationContext,
+            enabled = surfaceState.chimeInBackground && effectiveInterval != ChimeInterval.OFF,
+            interval = effectiveInterval
+        )
+    }
     val dialDayCode = if (scrubOffsetMinutes != 0f) effectiveDayCode else selectedDayCode
     val blocksForDial = remember(allBlocks, dialDayCode) {
         allBlocks.filter { it.isActiveForDay(dialDayCode) }.sortedBy { it.startMinutes }
@@ -729,6 +795,11 @@ fun KlydoDashboardScreen(
                     snackbarHostState.showSnackbar("Restored all prebuilt watch faces.")
                 }
             },
+            onRestoreSinglePrebuilt = { faceId ->
+                scope.launch {
+                    libraryStore.restorePrebuiltFace(faceId)
+                }
+            },
             onDismiss = { showGallery = false }
         )
     }
@@ -755,10 +826,47 @@ fun KlydoDashboardScreen(
     if (showSettings) {
         DisplaySettingsDialog(
             settings = settings,
+            surfaceState = surfaceState,
             isGuest = isGuest,
             userEmail = userEmail,
             onUpdateSettings = { viewModel.saveDisplaySettings(it) },
-            onTestChime = { viewModel.testChime() },
+            onUpdateSurfacePreferences = { wallpaperShowFrame, dreamOledShift, dreamShowNextRoutine, wallpaperBatterySaverFps ->
+                scope.launch {
+                    surfaceStore.updateSurfacePreferences(
+                        wallpaperShowFrame = wallpaperShowFrame,
+                        dreamOledShift = dreamOledShift,
+                        dreamShowNextRoutine = dreamShowNextRoutine,
+                        wallpaperBatterySaverFps = wallpaperBatterySaverFps
+                    )
+                }
+            },
+            onUpdateChimePreferences = { interval, tone, strikeHourCount, chimeInBackground, selectedCustomChimeId ->
+                scope.launch {
+                    surfaceStore.updateChimePreferences(
+                        chimeInterval = interval,
+                        chimeTone = tone,
+                        strikeHourCount = strikeHourCount,
+                        chimeInBackground = chimeInBackground,
+                        selectedCustomChimeId = selectedCustomChimeId
+                    )
+                }
+            },
+            onImportCustomChime = { audioUri ->
+                surfaceStore.importCustomChime(audioUri)
+            },
+            onDeleteCustomChime = { chimeId ->
+                scope.launch {
+                    surfaceStore.deleteCustomChime(chimeId)
+                }
+            },
+            onTestChime = { tone, strikeExample, customFile ->
+                viewModel.testChime(
+                    tone = tone,
+                    strikeHourExample = strikeExample,
+                    customFile = customFile
+                )
+            },
+            resolveChimeFile = { fileName -> surfaceStore.resolveChimeFile(fileName) },
             onSignInSuccess = { showSettings = false },
             onSignOut = {
                 showSettings = false

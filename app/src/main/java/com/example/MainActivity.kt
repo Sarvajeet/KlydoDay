@@ -31,6 +31,7 @@ import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.flowOf
 
 class MainActivity : ComponentActivity() {
     private val sharedVideoUriFlow = MutableStateFlow<Uri?>(null)
@@ -102,7 +103,6 @@ internal fun FirebaseAuth.authStateFlow(): Flow<FirebaseUser?> = callbackFlow {
 
 @Composable
 fun AppNavigation(
-    auth: FirebaseAuth = Firebase.auth,
     sharedVideoUri: Uri? = null,
     onConsumeSharedVideo: () -> Unit = {}
 ) {
@@ -110,23 +110,31 @@ fun AppNavigation(
     val scope = rememberCoroutineScope()
     val credentialManager = remember(context) { CredentialManager.create(context) }
 
-    // Attempt silent Google restore in the background without blocking Guest Mode launch
-    LaunchedEffect(Unit) {
-        attemptAutoSignIn(
-            context = context,
-            credentialManager = credentialManager,
-            onAuthSuccess = {},
-            onUnauthenticated = {},
-            scope = scope
-        )
+    // A missing google-services.json must not prevent the offline guest experience from opening.
+    val auth = remember(context) {
+        runCatching { Firebase.auth }.getOrNull()
     }
 
-    val currentUser by auth.authStateFlow().collectAsStateWithLifecycle(initialValue = auth.currentUser)
+    // Attempt silent Google restore only when Firebase was configured successfully.
+    LaunchedEffect(auth) {
+        if (auth != null) {
+            attemptAutoSignIn(
+                context = context,
+                credentialManager = credentialManager,
+                onAuthSuccess = {},
+                onUnauthenticated = {},
+                scope = scope
+            )
+        }
+    }
+
+    val authFlow: Flow<FirebaseUser?> = auth?.authStateFlow() ?: flowOf(null)
+    val currentUser by authFlow.collectAsStateWithLifecycle(initialValue = auth?.currentUser)
     val user = currentUser
 
-    // Migrate local guest schedule blocks to Firestore when a user signs in with Google
-    LaunchedEffect(user?.uid) {
-        if (user != null) {
+    // Migrate local guest schedule blocks to Firestore when a user signs in with Google.
+    LaunchedEffect(user?.uid, auth) {
+        if (user != null && auth != null) {
             val guestRepo = GuestKlydoRepository(context.applicationContext)
             val guestBlocks = guestRepo.getGuestBlocksSnapshot()
             if (guestBlocks.isNotEmpty()) {

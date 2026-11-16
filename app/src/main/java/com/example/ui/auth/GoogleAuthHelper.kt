@@ -8,7 +8,6 @@ import androidx.credentials.CredentialManager
 import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialCancellationException
-import com.example.R
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
@@ -22,6 +21,13 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 
+private fun getGoogleWebClientId(context: Context): String? = runCatching {
+    val resourceId = context.resources.getIdentifier(
+        "default_web_client_id", "string", context.packageName
+    )
+    if (resourceId != 0) context.getString(resourceId).takeIf { it.isNotBlank() } else null
+}.getOrNull()
+
 fun attemptAutoSignIn(
     context: Context,
     credentialManager: CredentialManager,
@@ -33,9 +39,8 @@ fun attemptAutoSignIn(
         onAuthSuccess()
         return
     }
-    val clientId = try {
-        context.getString(R.string.default_web_client_id)
-    } catch (_: Exception) {
+    val clientId = getGoogleWebClientId(context)
+    if (clientId == null) {
         onUnauthenticated()
         return
     }
@@ -76,9 +81,8 @@ fun onGoogleSignInClicked(
     scope: CoroutineScope,
     onAuthCancelled: () -> Unit = {}
 ) {
-    val clientId = try {
-        context.getString(R.string.default_web_client_id)
-    } catch (_: Exception) {
+    val clientId = getGoogleWebClientId(context)
+    if (clientId == null) {
         onAuthError("Google Sign-In configuration missing: default_web_client_id not found")
         return
     }

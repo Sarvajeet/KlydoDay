@@ -76,4 +76,17 @@ class GuestKlydoRepositoryTest {
         val blocksAfterDelete = repo.observeScheduleBlocks(GuestKlydoRepository.GUEST_USER_ID).first()
         assertTrue(blocksAfterDelete.isEmpty())
     }
+
+    @Test
+    fun `explicitly cleared favoriteKlydoIds remains empty instead of restoring default`() = runTest {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val repo = GuestKlydoRepository(context)
+
+        repo.saveDisplaySettings(
+            DisplaySettings(favoriteKlydoIds = emptyList())
+        ).getOrThrow()
+
+        val loaded = repo.observeDisplaySettings(GuestKlydoRepository.GUEST_USER_ID).first()
+        assertTrue(loaded.favoriteKlydoIds.isEmpty())
+    }
 }

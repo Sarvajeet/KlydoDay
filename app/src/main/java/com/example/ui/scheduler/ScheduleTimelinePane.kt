@@ -171,22 +171,26 @@ fun ScheduleTimelinePane(
                             effectiveMinuteOfDay in start until end
                         }
 
-                        if (activeBlock != null) {
-                            ActiveBlockHeroCard(
-                                block = activeBlock,
-                                effectiveMinuteOfDay = effectiveMinuteOfDay,
-                                clockFormat24h = clockFormat24h,
-                                isCompleted = activeBlock.isCompletedOn(todayDateKey),
-                                onToggleComplete = { onToggleComplete(activeBlock) },
-                                onEdit = { onEditBlock(activeBlock) }
-                            )
-                        }
-
                         LazyColumn(
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("schedule_timeline_list"),
                             verticalArrangement = Arrangement.spacedBy(10.dp),
                             contentPadding = PaddingValues(bottom = listBottomPadding)
                         ) {
+                            if (activeBlock != null) {
+                                item(key = "active_hero_${activeBlock.id}") {
+                                    ActiveBlockHeroCard(
+                                        block = activeBlock,
+                                        effectiveMinuteOfDay = effectiveMinuteOfDay,
+                                        clockFormat24h = clockFormat24h,
+                                        isCompleted = activeBlock.isCompletedOn(todayDateKey),
+                                        onToggleComplete = { onToggleComplete(activeBlock) },
+                                        onEdit = { onEditBlock(activeBlock) }
+                                    )
+                                }
+                            }
+
                             items(dayBlocks, key = { it.id }) { block ->
                                 val isActive = block.id == activeBlock?.id
                                 val isPast = (block.startMinutes + block.durationMinutes) <= effectiveMinuteOfDay

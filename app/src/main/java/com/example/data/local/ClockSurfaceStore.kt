@@ -53,7 +53,7 @@ data class ClockSurfaceState(
     val chimeIntervalKey: String = ChimeInterval.EVERY_1_HOUR.key,
     val chimeToneKey: String = ChimeTone.WESTMINSTER.key,
     val strikeHourCount: Boolean = false,
-    val chimeInBackground: Boolean = false,
+    val chimeInBackground: Boolean = true,
     val selectedCustomChimeId: String = "",
     val customChimes: List<CustomChimeSound> = emptyList()
 ) {
@@ -130,7 +130,7 @@ class ClockSurfaceStore(private val context: Context) {
                 chimeIntervalKey = prefs[chimeIntervalKeyPref] ?: ChimeInterval.EVERY_1_HOUR.key,
                 chimeToneKey = prefs[chimeToneKeyPref] ?: ChimeTone.WESTMINSTER.key,
                 strikeHourCount = prefs[strikeHourCountKey] ?: false,
-                chimeInBackground = prefs[chimeInBackgroundKey] ?: false,
+                chimeInBackground = prefs[chimeInBackgroundKey] ?: true,
                 selectedCustomChimeId = selectedCustom,
                 customChimes = customList
             )

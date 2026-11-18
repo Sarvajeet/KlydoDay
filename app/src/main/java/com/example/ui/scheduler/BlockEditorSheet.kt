@@ -3,10 +3,11 @@ package com.example.ui.scheduler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
@@ -77,6 +79,7 @@ private val PALETTE_SWATCHES = listOf(
 
 private val DURATION_PRESETS = listOf(15, 30, 45, 60, 90, 120, 180)
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun BlockEditorDialog(
     initialBlock: ScheduleBlock?,
@@ -139,14 +142,19 @@ fun BlockEditorDialog(
                     label = { Text("Routine Title") },
                     placeholder = { Text("e.g., Morning Studio Focus") },
                     isError = titleError,
+                    supportingText = if (titleError) {
+                        { Text("Title is required", color = CrimsonAlert) }
+                    } else null,
                     singleLine = true,
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedTextColor = CreamDial,
                         unfocusedTextColor = CreamDial,
                         focusedBorderColor = TerracottaAccent,
                         unfocusedBorderColor = HairlineBorder,
+                        errorBorderColor = CrimsonAlert,
                         focusedLabelColor = TerracottaAccent,
-                        unfocusedLabelColor = MutedSand
+                        unfocusedLabelColor = MutedSand,
+                        errorLabelColor = CrimsonAlert
                     ),
                     modifier = Modifier
                         .fillMaxWidth()
@@ -215,18 +223,19 @@ fun BlockEditorDialog(
                 // Duration Presets
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Duration", style = MaterialTheme.typography.labelSmall, color = MutedSand)
-                    Row(
-                        modifier = Modifier.horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         DURATION_PRESETS.forEach { mins ->
                             val selected = durationMinutes == mins
-                            Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = if (selected) TerracottaAccent else WarmSlate,
+                            Box(
                                 modifier = Modifier
+                                    .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
                                     .clip(RoundedCornerShape(12.dp))
-                                    .clickable { durationMinutes = mins }
+                                    .background(if (selected) TerracottaAccent else WarmSlate)
+                                    .clickable { durationMinutes = mins },
+                                contentAlignment = Alignment.Center
                             ) {
                                 Text(
                                     text = if (mins >= 60 && mins % 60 == 0) "${mins / 60}h" else "${mins}m",
@@ -242,29 +251,30 @@ fun BlockEditorDialog(
                 // Category Chips
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Category", style = MaterialTheme.typography.labelSmall, color = MutedSand)
-                    Row(
-                        modifier = Modifier.horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         ScheduleCategory.entries.forEach { cat ->
                             val selected = selectedCategory == cat
-                            Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = if (selected) parseBlockColor(cat.defaultColorHex).copy(alpha = 0.25f) else WarmSlate,
+                            Box(
                                 modifier = Modifier
+                                    .heightIn(min = 48.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(if (selected) parseBlockColor(cat.defaultColorHex).copy(alpha = 0.25f) else WarmSlate)
                                     .border(
                                         1.dp,
                                         if (selected) parseBlockColor(cat.defaultColorHex) else Color.Transparent,
                                         RoundedCornerShape(12.dp)
                                     )
-                                    .clip(RoundedCornerShape(12.dp))
                                     .clickable {
                                         selectedCategory = cat
                                         colorHex = cat.defaultColorHex
-                                    }
+                                    },
+                                contentAlignment = Alignment.Center
                             ) {
                                 Row(
-                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
@@ -288,9 +298,9 @@ fun BlockEditorDialog(
                 // Dial Arc Color Swatches
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Dial Arc Color", style = MaterialTheme.typography.labelSmall, color = MutedSand)
-                    Row(
-                        modifier = Modifier.horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         PALETTE_SWATCHES.forEach { hex ->
                             val isSelected = colorHex.equals(hex, ignoreCase = true)
@@ -324,32 +334,34 @@ fun BlockEditorDialog(
                         style = MaterialTheme.typography.labelSmall,
                         color = MutedSand
                     )
-                    Row(
-                        modifier = Modifier.horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         KlydoViewModel.WEEKDAYS.forEach { day ->
                             val active = daysOfWeek.isEmpty() || daysOfWeek.contains(day)
-                            Surface(
-                                shape = RoundedCornerShape(10.dp),
-                                color = if (active) WarmSlate else ObsidianChassis,
+                            Box(
                                 modifier = Modifier
+                                    .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(if (active) WarmSlate else ObsidianChassis)
                                     .border(
                                         1.dp,
                                         if (active) TerracottaAccent else HairlineBorder,
                                         RoundedCornerShape(10.dp)
                                     )
-                                    .clip(RoundedCornerShape(10.dp))
                                     .clickable {
                                         val base = if (daysOfWeek.isEmpty()) KlydoViewModel.WEEKDAYS else daysOfWeek
                                         daysOfWeek = if (base.contains(day)) {
                                             val next = base - day
-                                            if (next.isEmpty()) KlydoViewModel.WEEKDAYS else next
+                                            if (next.isEmpty()) emptyList() else next
                                         } else {
                                             val next = base + day
                                             if (next.size == 7) emptyList() else next
                                         }
                                     }
+                                    .testTag("weekday_chip_$day"),
+                                contentAlignment = Alignment.Center
                             ) {
                                 Text(
                                     text = day.take(2),

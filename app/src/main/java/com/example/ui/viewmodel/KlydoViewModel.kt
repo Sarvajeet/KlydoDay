@@ -1,5 +1,6 @@
 package com.example.ui.viewmodel
 
+import android.content.Context
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -23,9 +24,13 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.io.File
 import java.util.Calendar
 import java.util.Locale
@@ -38,7 +43,9 @@ sealed interface UiState<out T> {
 
 class KlydoViewModel(
     private val repository: KlydoDataSource,
-    private val currentUserId: String
+    private val currentUserId: String,
+    private val appContext: Context? = null,
+    enableTicker: Boolean = true
 ) : ViewModel() {
 
     val scheduleBlocksState: StateFlow<UiState<List<ScheduleBlock>>> =
@@ -55,25 +62,40 @@ class KlydoViewModel(
             }
             .stateIn(
                 scope = viewModelScope,
-                started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
+                started = SharingStarted.Eagerly,
                 initialValue = UiState.Loading
             )
 
-    val displaySettingsState: StateFlow<DisplaySettings> =
-        repository.observeDisplaySettings(currentUserId)
-            .catch { error ->
-                val firestoreError = generateSequence(error) { it.cause }
-                    .filterIsInstance<FirebaseFirestoreException>()
-                    .firstOrNull()
-                if (firestoreError == null && error is CancellationException) throw error
-                Log.w(TAG, "Error observing display settings", firestoreError ?: error)
-                emit(DisplaySettings(id = KlydoRepository.SETTINGS_DOC_ID, userId = currentUserId))
+    private val _hasLoadedSettings = MutableStateFlow(false)
+    val hasLoadedSettings: StateFlow<Boolean> = _hasLoadedSettings.asStateFlow()
+
+    private val settingsMutex = Mutex()
+    private val _optimisticSettings = MutableStateFlow<DisplaySettings?>(null)
+
+    private val repoDisplaySettingsFlow = repository.observeDisplaySettings(currentUserId)
+        .catch { error ->
+            val firestoreError = generateSequence(error) { it.cause }
+                .filterIsInstance<FirebaseFirestoreException>()
+                .firstOrNull()
+            if (firestoreError == null && error is CancellationException) throw error
+            Log.w(TAG, "Error observing display settings", firestoreError ?: error)
+            emit(DisplaySettings(id = KlydoRepository.SETTINGS_DOC_ID, userId = currentUserId))
+        }
+        .onEach {
+            _hasLoadedSettings.value = true
+            if (!settingsMutex.isLocked) {
+                _optimisticSettings.value = null
             }
-            .stateIn(
-                scope = viewModelScope,
-                started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
-                initialValue = DisplaySettings(id = KlydoRepository.SETTINGS_DOC_ID, userId = currentUserId)
-            )
+        }
+
+    val displaySettingsState: StateFlow<DisplaySettings> =
+        combine(repoDisplaySettingsFlow, _optimisticSettings) { remote, optimistic ->
+            optimistic ?: remote
+        }.stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.Eagerly,
+            initialValue = DisplaySettings(id = KlydoRepository.SETTINGS_DOC_ID, userId = currentUserId)
+        )
 
     private val _nowMillis = MutableStateFlow(System.currentTimeMillis())
     val nowMillis: StateFlow<Long> = _nowMillis.asStateFlow()
@@ -98,12 +120,15 @@ class KlydoViewModel(
     private var lastAutoCycleMinuteMark: Long = -1L
 
     init {
-        viewModelScope.launch {
-            while (true) {
-                val now = System.currentTimeMillis()
-                _nowMillis.value = now
-                evaluateChimesAndCycle(now)
-                delay(1000L)
+        if (enableTicker) {
+            viewModelScope.launch {
+                while (true) {
+                    val now = System.currentTimeMillis()
+                    _nowMillis.value = now
+                    evaluateChimesAndCycle(now)
+                    val sleepMs = (1000L - (now % 1000L) + 15L).coerceIn(200L, 1020L)
+                    delay(sleepMs)
+                }
             }
         }
     }
@@ -124,28 +149,31 @@ class KlydoViewModel(
                 hourlyChimeEnabled = settings.hourlyChimeEnabled,
                 configuredInterval = configuredChimeInterval
             )
+            val knownLastKey = lastChimedHourKey.ifBlank { ChimePlayer.lastPlayedDedupKey(appContext) }
             val trigger = ChimeScheduleEvaluator.evaluate(
                 nowMillis = now,
                 interval = effectiveInterval,
                 settings = settings,
-                lastChimeKey = lastChimedHourKey
+                lastChimeKey = knownLastKey
             )
-            if (trigger != null) {
+            if (trigger != null && ChimePlayer.tryAcquireChimeSlot(appContext, trigger.dedupKey)) {
                 lastChimedHourKey = trigger.dedupKey
                 when (trigger.kind) {
                     ChimeTriggerKind.FULL_HOUR -> ChimePlayer.playHourlyChime(
                         tone = configuredChimeTone,
                         strikeHourCount = if (configuredStrikeHourCount) trigger.hour12 else 0,
-                        customFile = configuredCustomChimeFile
+                        customFile = configuredCustomChimeFile,
+                        context = appContext
                     )
                     ChimeTriggerKind.SUB_INTERVAL -> ChimePlayer.playSubIntervalChime(
                         tone = configuredChimeTone,
-                        customFile = configuredCustomChimeFile
+                        customFile = configuredCustomChimeFile,
+                        context = appContext
                     )
                 }
             }
 
-            if (second <= 1 && settings.blockChimeEnabled) {
+            if (second <= 15 && settings.blockChimeEnabled) {
                 val blocks = (scheduleBlocksState.value as? UiState.Success)?.data.orEmpty()
                 val startingBlock = blocks.firstOrNull { block ->
                     block.chimeEnabled &&
@@ -156,7 +184,7 @@ class KlydoViewModel(
                     val blockKey = "$dateKey-${startingBlock.id}-$minuteOfDay"
                     if (blockKey != lastChimedBlockKey) {
                         lastChimedBlockKey = blockKey
-                        ChimePlayer.playBlockStartChime()
+                        ChimePlayer.playBlockStartChime(context = appContext)
                     }
                 }
             }
@@ -311,42 +339,55 @@ class KlydoViewModel(
     }
 
     fun selectKlydo(klydoId: String) {
-        val current = displaySettingsState.value
-        saveDisplaySettings(
+        updateDisplaySettings { current ->
             current.copy(
                 activeKlydoId = klydoId,
                 pendulumStyle = PendulumStyle.OBSIDIAN.key
             )
-        )
+        }
     }
 
     fun toggleFavoriteKlydo(klydoId: String) {
-        val current = displaySettingsState.value
-        val updated = if (current.favoriteKlydoIds.contains(klydoId)) {
-            current.favoriteKlydoIds.filterNot { it == klydoId }
-        } else {
-            (current.favoriteKlydoIds + klydoId).take(20)
+        updateDisplaySettings { current ->
+            val updated = if (current.favoriteKlydoIds.contains(klydoId)) {
+                current.favoriteKlydoIds.filterNot { it == klydoId }
+            } else {
+                (current.favoriteKlydoIds + klydoId).take(20)
+            }
+            current.copy(favoriteKlydoIds = updated)
         }
-        saveDisplaySettings(current.copy(favoriteKlydoIds = updated))
     }
 
     fun selectPendulumStyle(style: PendulumStyle) {
-        val current = displaySettingsState.value
-        saveDisplaySettings(current.copy(pendulumStyle = style.key))
+        updateDisplaySettings { current ->
+            current.copy(pendulumStyle = style.key)
+        }
     }
 
     fun setShowFrame(showFrame: Boolean) {
-        val current = displaySettingsState.value
-        saveDisplaySettings(current.copy(showFrame = showFrame))
+        updateDisplaySettings { current ->
+            current.copy(showFrame = showFrame)
+        }
+    }
+
+    fun updateDisplaySettings(transform: (DisplaySettings) -> DisplaySettings) {
+        viewModelScope.launch {
+            settingsMutex.withLock {
+                val base = _optimisticSettings.value ?: displaySettingsState.value
+                val updated = transform(base)
+                if (updated == base) return@withLock
+                _optimisticSettings.value = updated
+                val result = repository.saveDisplaySettings(updated)
+                if (result.isFailure) {
+                    _optimisticSettings.value = null
+                    _statusBanner.value = result.exceptionOrNull()?.localizedMessage ?: "Failed to save display settings"
+                }
+            }
+        }
     }
 
     fun saveDisplaySettings(settings: DisplaySettings) {
-        viewModelScope.launch {
-            val result = repository.saveDisplaySettings(settings)
-            if (result.isFailure) {
-                _statusBanner.value = result.exceptionOrNull()?.localizedMessage ?: "Failed to save display settings"
-            }
-        }
+        updateDisplaySettings { settings }
     }
 
     fun testChime(
@@ -357,13 +398,13 @@ class KlydoViewModel(
         ChimePlayer.playHourlyChime(
             tone = tone,
             strikeHourCount = strikeHourExample,
-            customFile = customFile
+            customFile = customFile,
+            context = appContext
         )
     }
 
     companion object {
         private const val TAG = "KlydoVM"
-        private const val STOP_TIMEOUT_MILLIS = 5000L
 
         val WEEKDAYS = listOf("MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN")
 

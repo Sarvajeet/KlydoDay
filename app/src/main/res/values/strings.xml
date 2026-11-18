@@ -20,6 +20,6 @@
     <string name="wallpaper_description">Animated kinetic clock dial &amp; swinging pendulum synced with your active watch face and daily routine arcs.</string>
     <string name="set_live_wallpaper_cta">Set Lock &amp; Home Wallpaper</string>
     <string name="open_dream_settings_cta">Charging / Dock Screen Saver</string>
-    <string name="developed_by_credit">developed by Sarvajeet Gada</string>
+    <string name="developed_by_credit">Developed by Sarvajeet Gada</string>
     <string name="splash_tagline">Kinetic Visual Clock &amp; Daily Rhythm</string>
 </resources>

@@ -253,14 +253,15 @@ fun KlydoGalleryDialog(
                     onSelectTab = { selectedTab = it }
                 )
 
-                AnimatedContent(
-                    targetState = selectedTab,
-                    transitionSpec = {
-                        fadeIn(animationSpec = tween(180)) togetherWith
-                            fadeOut(animationSpec = tween(120))
-                    },
-                    label = "gallery_tab_transition"
-                ) { tab ->
+                Box(modifier = Modifier.weight(1f, fill = false)) {
+                    AnimatedContent(
+                        targetState = selectedTab,
+                        transitionSpec = {
+                            fadeIn(animationSpec = tween(180)) togetherWith
+                                fadeOut(animationSpec = tween(120))
+                        },
+                        label = "gallery_tab_transition"
+                    ) { tab ->
                     when (tab) {
                         GalleryTab.FACES -> FacesArtTab(
                             availableFaces = availableFaces,
@@ -330,6 +331,7 @@ fun KlydoGalleryDialog(
                             onRestoreSinglePrebuilt = onRestoreSinglePrebuilt,
                             onRestorePrebuilt = onRestorePrebuilt
                         )
+                    }
                     }
                 }
 
@@ -645,7 +647,7 @@ internal fun WatchFaceGrid(
         columns = GridCells.Adaptive(minSize = 164.dp),
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = 240.dp, max = 460.dp)
+            .heightIn(min = 120.dp, max = 460.dp)
             .testTag("watch_face_grid"),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),

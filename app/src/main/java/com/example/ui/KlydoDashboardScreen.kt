@@ -144,7 +144,8 @@ fun KlydoDashboardRoute(
                 }
                 KlydoViewModel(
                     repository = dataSource,
-                    currentUserId = sessionKey
+                    currentUserId = sessionKey,
+                    appContext = app.applicationContext
                 )
             }
         }
@@ -169,7 +170,8 @@ fun KlydoDashboardScreen(
     sharedVideoUri: Uri? = null,
     onConsumeSharedVideo: () -> Unit = {},
     sharedAudioUri: Uri? = null,
-    onConsumeSharedAudio: () -> Unit = {}
+    onConsumeSharedAudio: () -> Unit = {},
+    animateClock: Boolean = true
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -185,6 +187,7 @@ fun KlydoDashboardScreen(
 
     val blocksState by viewModel.scheduleBlocksState.collectAsStateWithLifecycle()
     val settings by viewModel.displaySettingsState.collectAsStateWithLifecycle()
+    val hasLoadedSettings by viewModel.hasLoadedSettings.collectAsStateWithLifecycle()
     val nowMillis by viewModel.nowMillis.collectAsStateWithLifecycle()
     val scrubOffsetMinutes by viewModel.scrubOffsetMinutes.collectAsStateWithLifecycle()
     val selectedDayCode by viewModel.selectedDayCode.collectAsStateWithLifecycle()
@@ -223,8 +226,11 @@ fun KlydoDashboardScreen(
             onConsumeSharedAudio()
             val res = surfaceStore.importCustomChime(sharedAudioUri)
             res.onSuccess { imported ->
-                if (!settings.hourlyChimeEnabled) {
-                    viewModel.saveDisplaySettings(settings.copy(hourlyChimeEnabled = true))
+                viewModel.updateDisplaySettings { current ->
+                    if (current.hourlyChimeEnabled) current else current.copy(hourlyChimeEnabled = true)
+                }
+                if (surfaceState.chimeInterval == ChimeInterval.OFF) {
+                    surfaceStore.updateChimePreferences(chimeInterval = ChimeInterval.EVERY_1_HOUR)
                 }
                 val file = surfaceStore.resolveChimeFile(imported.audioFileName)
                 viewModel.testChime(tone = surfaceState.chimeTone, strikeHourExample = 0, customFile = file)
@@ -267,8 +273,10 @@ fun KlydoDashboardScreen(
 
     val isNightMode = KlydoViewModel.isMinuteInNightWindow(effectiveMinuteOfDay, settings)
     val allBlocks = (blocksState as? UiState.Success)?.data.orEmpty()
-    LaunchedEffect(settings, allBlocks) {
-        surfaceStore.syncFromApp(settings, allBlocks)
+    LaunchedEffect(hasLoadedSettings, blocksState, settings) {
+        val loadedBlocks = (blocksState as? UiState.Success)?.data ?: return@LaunchedEffect
+        if (!hasLoadedSettings) return@LaunchedEffect
+        surfaceStore.syncFromApp(settings, loadedBlocks)
     }
     val activeCustomChimeFile = remember(
         surfaceState.selectedCustomChimeId,
@@ -411,6 +419,7 @@ fun KlydoDashboardScreen(
                         artMeta = activeArtMeta,
                         customVideoFace = activeCustomVideoFace,
                         customVideoUri = activeCustomVideoUri,
+                        animateClock = animateClock,
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(vertical = 8.dp)
@@ -512,6 +521,7 @@ fun KlydoDashboardScreen(
                                 artMeta = activeArtMeta,
                                 customVideoFace = activeCustomVideoFace,
                                 customVideoUri = activeCustomVideoUri,
+                                animateClock = animateClock,
                                 modifier = Modifier
                                     .weight(1f)
                                     .fillMaxWidth()
@@ -575,6 +585,7 @@ fun KlydoDashboardScreen(
                         artMeta = activeArtMeta,
                         customVideoFace = activeCustomVideoFace,
                         customVideoUri = activeCustomVideoUri,
+                        animateClock = animateClock,
                         modifier = Modifier
                             .weight(0.38f)
                             .fillMaxHeight()
@@ -704,6 +715,7 @@ fun KlydoDashboardScreen(
                                 artMeta = activeArtMeta,
                                 customVideoFace = activeCustomVideoFace,
                                 customVideoUri = activeCustomVideoUri,
+                                animateClock = animateClock,
                                 modifier = Modifier
                                     .weight(1f)
                                     .fillMaxWidth()
@@ -778,14 +790,6 @@ fun KlydoDashboardScreen(
                         snackbarHostState.showSnackbar("Deleted custom face \"${art.title}\"")
                     } else {
                         libraryStore.deletePrebuiltFace(art.id)
-                        val snackResult = snackbarHostState.showSnackbar(
-                            message = "Deleted \"${art.title}\"",
-                            actionLabel = "Undo",
-                            duration = SnackbarDuration.Short
-                        )
-                        if (snackResult == SnackbarResult.ActionPerformed) {
-                            libraryStore.restorePrebuiltFace(art.id)
-                        }
                     }
                 }
             },
@@ -800,7 +804,8 @@ fun KlydoDashboardScreen(
                     libraryStore.restorePrebuiltFace(faceId)
                 }
             },
-            onDismiss = { showGallery = false }
+            onDismiss = { showGallery = false },
+            animatePreviews = animateClock
         )
     }
 
@@ -872,7 +877,8 @@ fun KlydoDashboardScreen(
                 showSettings = false
                 signOut(credentialManager = credentialManager, scope = scope)
             },
-            onDismiss = { showSettings = false }
+            onDismiss = { showSettings = false },
+            onTransformSettings = { viewModel.updateDisplaySettings(it) }
         )
     }
 

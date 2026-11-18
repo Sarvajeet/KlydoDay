@@ -75,4 +75,72 @@ class ChimeScheduleEvaluatorTest {
         assertEquals(millisAt(15, 0, 0), ChimeScheduleEvaluator.nextBoundaryMillis(at1423, ChimeInterval.EVERY_1_HOUR))
         assertEquals(millisAt(16, 0, 0), ChimeScheduleEvaluator.nextBoundaryMillis(at1423, ChimeInterval.EVERY_2_HOURS))
     }
+
+    @Test
+    fun `evaluate tolerates coroutine jitter inside boundary minute and deduplicates`() {
+        val settings = DisplaySettings(hourlyChimeEnabled = true, nightModeEnabled = false)
+        val delayedTick = millisAt(15, 0, 12)
+        val decision = ChimeScheduleEvaluator.evaluate(delayedTick, ChimeInterval.EVERY_1_HOUR, settings, "")
+        assertNotNull(decision)
+        assertEquals(ChimeTriggerKind.FULL_HOUR, decision?.kind)
+        assertEquals(3, decision?.hour12)
+        assertNull(ChimeScheduleEvaluator.evaluate(delayedTick + 2000L, ChimeInterval.EVERY_1_HOUR, settings, decision!!.dedupKey))
+    }
+
+    @Test
+    fun `evaluateDelayedBoundary preserves boundary kind under Doze delay and skips stale or night alarms`() {
+        val settings = DisplaySettings(
+            hourlyChimeEnabled = true,
+            nightModeEnabled = true,
+            nightStartMinutes = 1320L,
+            nightEndMinutes = 420L
+        )
+
+        val targetQuarter = millisAt(14, 45, 0)
+        val delayedQuarterNow = millisAt(14, 57, 10)
+        val quarterDecision = ChimeScheduleEvaluator.evaluateDelayedBoundary(
+            targetBoundaryMillis = targetQuarter,
+            nowMillis = delayedQuarterNow,
+            interval = ChimeInterval.EVERY_15_MIN,
+            settings = settings,
+            lastChimeKey = ""
+        )
+        assertNotNull(quarterDecision)
+        assertEquals(ChimeTriggerKind.SUB_INTERVAL, quarterDecision?.kind)
+
+        val targetHour = millisAt(15, 0, 0)
+        val delayedHourNow = millisAt(15, 4, 20)
+        val hourDecision = ChimeScheduleEvaluator.evaluateDelayedBoundary(
+            targetBoundaryMillis = targetHour,
+            nowMillis = delayedHourNow,
+            interval = ChimeInterval.EVERY_1_HOUR,
+            settings = settings,
+            lastChimeKey = ""
+        )
+        assertNotNull(hourDecision)
+        assertEquals(ChimeTriggerKind.FULL_HOUR, hourDecision?.kind)
+        assertEquals(3, hourDecision?.hour12)
+
+        // Stale alarm > 35 min late is ignored
+        assertNull(
+            ChimeScheduleEvaluator.evaluateDelayedBoundary(
+                targetBoundaryMillis = millisAt(12, 0, 0),
+                nowMillis = millisAt(13, 0, 0),
+                interval = ChimeInterval.EVERY_1_HOUR,
+                settings = settings,
+                lastChimeKey = ""
+            )
+        )
+
+        // Night mode suppresses delayed alarm
+        assertNull(
+            ChimeScheduleEvaluator.evaluateDelayedBoundary(
+                targetBoundaryMillis = millisAt(22, 0, 0),
+                nowMillis = millisAt(22, 2, 0),
+                interval = ChimeInterval.EVERY_1_HOUR,
+                settings = settings,
+                lastChimeKey = ""
+            )
+        )
+    }
 }

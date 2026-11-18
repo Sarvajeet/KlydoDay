@@ -66,6 +66,16 @@ object ChimeScheduleEvaluator {
         return if (configuredInterval == ChimeInterval.OFF) ChimeInterval.EVERY_1_HOUR else configuredInterval
     }
 
+    fun formatDedupKey(cal: Calendar): String = String.format(
+        Locale.US,
+        "%04d-%02d-%02d-%02d-%02d",
+        cal.get(Calendar.YEAR),
+        cal.get(Calendar.MONTH) + 1,
+        cal.get(Calendar.DAY_OF_MONTH),
+        cal.get(Calendar.HOUR_OF_DAY),
+        cal.get(Calendar.MINUTE)
+    )
+
     fun evaluate(
         nowMillis: Long,
         interval: ChimeInterval,
@@ -81,7 +91,9 @@ object ChimeScheduleEvaluator {
         val minuteOfDay = hour24 * 60 + minute
 
         if (KlydoViewModel.isMinuteInNightWindow(minuteOfDay, settings)) return null
-        if (second > 2) return null
+        // Allow up to 25 seconds inside the boundary minute to survive UI/GC/Doze wake jitter;
+        // dedupKey prevents ringing twice in the same minute.
+        if (second > 25) return null
 
         val matchesBoundary = if (interval.minutes < 60) {
             minute % interval.minutes == 0
@@ -91,15 +103,7 @@ object ChimeScheduleEvaluator {
         }
         if (!matchesBoundary) return null
 
-        val dedupKey = String.format(
-            Locale.US,
-            "%04d-%02d-%02d-%02d-%02d",
-            cal.get(Calendar.YEAR),
-            cal.get(Calendar.MONTH) + 1,
-            cal.get(Calendar.DAY_OF_MONTH),
-            hour24,
-            minute
-        )
+        val dedupKey = formatDedupKey(cal)
         if (dedupKey == lastChimeKey) return null
 
         val hour12 = ((hour24 % 12).let { if (it == 0) 12 else it })
@@ -107,9 +111,38 @@ object ChimeScheduleEvaluator {
         return ChimeTriggerDecision(kind = kind, dedupKey = dedupKey, hour12 = hour12)
     }
 
+    fun evaluateDelayedBoundary(
+        targetBoundaryMillis: Long?,
+        nowMillis: Long,
+        interval: ChimeInterval,
+        settings: DisplaySettings,
+        lastChimeKey: String
+    ): ChimeTriggerDecision? {
+        if (interval == ChimeInterval.OFF || interval.minutes <= 0) return null
+
+        val nowCal = Calendar.getInstance().apply { timeInMillis = nowMillis }
+        val nowMinuteOfDay = nowCal.get(Calendar.HOUR_OF_DAY) * 60 + nowCal.get(Calendar.MINUTE)
+        if (KlydoViewModel.isMinuteInNightWindow(nowMinuteOfDay, settings)) return null
+
+        val effectiveBoundary = targetBoundaryMillis?.takeIf { it > 0L } ?: nowMillis
+        // Skip extremely stale alarms (e.g. device powered off for hours)
+        if (nowMillis - effectiveBoundary > MAX_DELAYED_ALARM_AGE_MS) return null
+
+        val boundaryCal = Calendar.getInstance().apply { timeInMillis = effectiveBoundary }
+        val dedupKey = formatDedupKey(boundaryCal)
+        if (dedupKey == lastChimeKey) return null
+
+        val boundaryHour24 = boundaryCal.get(Calendar.HOUR_OF_DAY)
+        val boundaryMinute = boundaryCal.get(Calendar.MINUTE)
+        val hour12 = (boundaryHour24 % 12).let { if (it == 0) 12 else it }
+        val kind = if (boundaryMinute == 0) ChimeTriggerKind.FULL_HOUR else ChimeTriggerKind.SUB_INTERVAL
+        return ChimeTriggerDecision(kind = kind, dedupKey = dedupKey, hour12 = hour12)
+    }
+
+    private const val MAX_DELAYED_ALARM_AGE_MS = 35 * 60_000L
+
     fun nextBoundaryMillis(nowMillis: Long, interval: ChimeInterval): Long? {
         if (interval == ChimeInterval.OFF || interval.minutes <= 0) return null
-        val stepMillis = interval.minutes * 60_000L
         val cal = Calendar.getInstance().apply { timeInMillis = nowMillis }
         cal.set(Calendar.SECOND, 0)
         cal.set(Calendar.MILLISECOND, 0)
@@ -135,7 +168,7 @@ object ChimeScheduleEvaluator {
             } else {
                 cal.set(Calendar.HOUR_OF_DAY, nextHour)
             }
-            cal.timeInMillis.coerceAtLeast(nowMillis + stepMillis.coerceAtMost(60_000L))
+            cal.timeInMillis.coerceAtLeast(nowMillis + 60_000L)
         }
     }
 }

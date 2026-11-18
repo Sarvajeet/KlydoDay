@@ -1,5 +1,6 @@
 package com.example.ui
 
+import android.app.Activity
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
@@ -13,13 +14,13 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -35,6 +36,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -46,29 +48,35 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.view.WindowCompat
 import com.example.R
 import com.example.ui.theme.CelestialTeal
-import com.example.ui.theme.CreamDial
-import com.example.ui.theme.HairlineBorder
-import com.example.ui.theme.MutedSand
 import com.example.ui.theme.ObsidianChassis
 import com.example.ui.theme.SaffronAmber
 import com.example.ui.theme.TerracottaAccent
-import com.example.ui.theme.WarmSlate
 import kotlinx.coroutines.delay
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
+
+private val LightLoadRingBorder = Color(0xFFE0DBD1)
+private val LightLoadTickMuted = Color(0xFF8A847A)
+private val LightLoadTagPill = Color(0xFFF5F1E9)
+private val LightLoadTagBorder = Color(0xFFE5DFD3)
+private val LightLoadTagText = Color(0xFFAA4E28)
+private val LightLoadTrack = Color(0xFFE8E4DC)
 
 @Composable
 fun KlydoLoadScreen(
@@ -76,6 +84,20 @@ fun KlydoLoadScreen(
     displayDurationMs: Long = 1650L,
     animateMotion: Boolean = true
 ) {
+    val view = LocalView.current
+    DisposableEffect(view) {
+        val window = (view.context as? Activity)?.window
+        val controller = window?.let { WindowCompat.getInsetsController(it, view) }
+        val prevLightStatus = controller?.isAppearanceLightStatusBars ?: false
+        val prevLightNav = controller?.isAppearanceLightNavigationBars ?: false
+        controller?.isAppearanceLightStatusBars = true
+        controller?.isAppearanceLightNavigationBars = true
+        onDispose {
+            controller?.isAppearanceLightStatusBars = prevLightStatus
+            controller?.isAppearanceLightNavigationBars = prevLightNav
+        }
+    }
+
     var revealed by remember { mutableStateOf(!animateMotion) }
     val loadProgress = remember { Animatable(if (animateMotion) 0f else 1f) }
 
@@ -128,14 +150,7 @@ fun KlydoLoadScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                Brush.radialGradient(
-                    colors = listOf(
-                        Color(0xFF1F222C),
-                        ObsidianChassis
-                    )
-                )
-            )
+            .background(Color.White)
             .windowInsetsPadding(WindowInsets.safeDrawing)
             .padding(horizontal = 28.dp, vertical = 28.dp)
             .testTag("app_load_screen")
@@ -168,12 +183,12 @@ fun KlydoLoadScreen(
                     val center = Offset(size.width / 2f, size.height / 2f)
                     val radius = size.minDimension * 0.44f
 
-                    // Ambient halo
+                    // Soft warm halo on white
                     drawCircle(
                         brush = Brush.radialGradient(
                             colors = listOf(
-                                TerracottaAccent.copy(alpha = 0.28f),
-                                SaffronAmber.copy(alpha = 0.08f),
+                                TerracottaAccent.copy(alpha = 0.14f),
+                                SaffronAmber.copy(alpha = 0.06f),
                                 Color.Transparent
                             ),
                             center = center,
@@ -185,7 +200,7 @@ fun KlydoLoadScreen(
 
                     // Precision outer ring
                     drawCircle(
-                        color = HairlineBorder,
+                        color = LightLoadRingBorder,
                         radius = radius,
                         center = center,
                         style = Stroke(width = 2.dp.toPx())
@@ -206,7 +221,7 @@ fun KlydoLoadScreen(
                         sweepAngle = 220f,
                         useCenter = false,
                         topLeft = Offset(center.x - radius, center.y - radius),
-                        size = androidx.compose.ui.geometry.Size(radius * 2f, radius * 2f),
+                        size = Size(radius * 2f, radius * 2f),
                         style = Stroke(width = 3.2.dp.toPx(), cap = StrokeCap.Round)
                     )
 
@@ -216,7 +231,7 @@ fun KlydoLoadScreen(
                         val tickInner = radius * 0.80f
                         val tickOuter = radius * 0.89f
                         drawLine(
-                            color = if (i % 3 == 0) SaffronAmber else MutedSand.copy(alpha = 0.55f),
+                            color = if (i % 3 == 0) TerracottaAccent else LightLoadTickMuted.copy(alpha = 0.65f),
                             start = Offset(
                                 center.x + (cos(angleRad) * tickInner).toFloat(),
                                 center.y + (sin(angleRad) * tickInner).toFloat()
@@ -233,7 +248,7 @@ fun KlydoLoadScreen(
                     // Hour & kinetic minute hand
                     val hourRad = (-60.0) * PI / 180.0
                     drawLine(
-                        color = CreamDial,
+                        color = ObsidianChassis,
                         start = center,
                         end = Offset(
                             center.x + (cos(hourRad) * radius * 0.44f).toFloat(),
@@ -256,7 +271,7 @@ fun KlydoLoadScreen(
                     )
 
                     drawCircle(
-                        color = SaffronAmber,
+                        color = ObsidianChassis,
                         radius = 4.5.dp.toPx(),
                         center = center
                     )
@@ -273,19 +288,20 @@ fun KlydoLoadScreen(
                         fontWeight = FontWeight.Bold,
                         letterSpacing = 0.8.sp
                     ),
-                    color = CreamDial,
+                    color = ObsidianChassis,
                     textAlign = TextAlign.Center,
                     modifier = Modifier.testTag("load_screen_app_name")
                 )
 
                 Surface(
                     shape = RoundedCornerShape(50),
-                    color = WarmSlate.copy(alpha = 0.65f)
+                    color = LightLoadTagPill,
+                    modifier = Modifier.border(1.dp, LightLoadTagBorder, RoundedCornerShape(50))
                 ) {
                     Text(
                         text = stringResource(R.string.splash_tagline),
                         style = MaterialTheme.typography.labelMedium,
-                        color = SaffronAmber,
+                        color = LightLoadTagText,
                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
                     )
                 }
@@ -306,7 +322,7 @@ fun KlydoLoadScreen(
                     .width(120.dp)
                     .height(3.dp)
                     .clip(RoundedCornerShape(50))
-                    .background(WarmSlate)
+                    .background(LightLoadTrack)
             ) {
                 Box(
                     modifier = Modifier
@@ -334,9 +350,10 @@ fun KlydoLoadScreen(
                 Text(
                     text = stringResource(R.string.developed_by_credit),
                     style = MaterialTheme.typography.bodyMedium.copy(
+                        fontWeight = FontWeight.Medium,
                         letterSpacing = 0.4.sp
                     ),
-                    color = CreamDial.copy(alpha = 0.88f),
+                    color = ObsidianChassis.copy(alpha = 0.86f),
                     modifier = Modifier.testTag("load_screen_developer_credit")
                 )
             }

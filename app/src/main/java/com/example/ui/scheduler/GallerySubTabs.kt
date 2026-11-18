@@ -202,7 +202,6 @@ internal fun CabinetStyleTab(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(max = 500.dp)
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {

@@ -1,5 +1,9 @@
 package com.example.wallpaper
 
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
@@ -15,8 +19,13 @@ import android.os.Build
 import android.service.wallpaper.WallpaperService
 import android.view.Choreographer
 import android.view.SurfaceHolder
+import androidx.core.content.ContextCompat
 import androidx.core.graphics.toColorInt
 import androidx.core.graphics.withClip
+import com.example.audio.ChimeInterval
+import com.example.audio.ChimePlayer
+import com.example.audio.ChimeScheduleEvaluator
+import com.example.audio.ChimeTriggerKind
 import com.example.data.local.ClockSurfaceState
 import com.example.data.local.ClockSurfaceStore
 import com.example.data.local.WatchFaceLibraryStore
@@ -33,6 +42,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -43,6 +53,70 @@ import kotlin.math.min
 import kotlin.math.sin
 
 class KlydoWallpaperService : WallpaperService() {
+
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var timeTickRegistered = false
+    private val timeTickReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent?) {
+            if (intent?.action != Intent.ACTION_TIME_TICK) return
+            val appCtx = applicationContext
+            serviceScope.launch {
+                val store = ClockSurfaceStore(appCtx)
+                val state = store.surfaceFlow.first()
+                if (!state.chimeInBackground) return@launch
+                val interval = ChimeScheduleEvaluator.effectiveInterval(
+                    hourlyChimeEnabled = state.hourlyChimeEnabled,
+                    configuredInterval = state.chimeInterval
+                )
+                if (interval == ChimeInterval.OFF) return@launch
+                val now = System.currentTimeMillis()
+                val decision = ChimeScheduleEvaluator.evaluate(
+                    nowMillis = now,
+                    interval = interval,
+                    settings = state.toDisplaySettingsSnapshot(),
+                    lastChimeKey = ChimePlayer.lastPlayedDedupKey(appCtx)
+                ) ?: return@launch
+                if (ChimePlayer.tryAcquireChimeSlot(appCtx, decision.dedupKey)) {
+                    val customFile = store.resolveActiveCustomChimeFile(state)
+                    when (decision.kind) {
+                        ChimeTriggerKind.FULL_HOUR -> ChimePlayer.playHourlyChime(
+                            tone = state.chimeTone,
+                            strikeHourCount = if (state.strikeHourCount) decision.hour12 else 0,
+                            customFile = customFile,
+                            context = appCtx
+                        )
+                        ChimeTriggerKind.SUB_INTERVAL -> ChimePlayer.playSubIntervalChime(
+                            tone = state.chimeTone,
+                            customFile = customFile,
+                            context = appCtx
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+        runCatching {
+            ContextCompat.registerReceiver(
+                this,
+                timeTickReceiver,
+                IntentFilter(Intent.ACTION_TIME_TICK),
+                ContextCompat.RECEIVER_EXPORTED
+            )
+            timeTickRegistered = true
+        }
+    }
+
+    override fun onDestroy() {
+        if (timeTickRegistered) {
+            runCatching { unregisterReceiver(timeTickReceiver) }
+            timeTickRegistered = false
+        }
+        serviceScope.cancel()
+        super.onDestroy()
+    }
 
     override fun onCreateEngine(): Engine = KlydoWallpaperEngine()
 

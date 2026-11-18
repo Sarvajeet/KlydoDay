@@ -14,9 +14,11 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableDoubleStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
@@ -33,6 +35,9 @@ import androidx.compose.ui.platform.testTag
 import android.net.Uri
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.toColorInt
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.example.data.model.CustomWatchFace
 import com.example.data.model.KlydoArtCatalog
 import com.example.data.model.KlydoArtMeta
@@ -42,6 +47,7 @@ import com.example.ui.theme.NightAmber
 import com.example.ui.theme.TerracottaAccent
 import java.util.Calendar
 import kotlin.math.PI
+import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -68,18 +74,53 @@ fun KlydoClockCabinet(
     modifier: Modifier = Modifier,
     artMeta: KlydoArtMeta = KlydoArtCatalog.findById(klydoId),
     customVideoFace: CustomWatchFace? = null,
-    customVideoUri: Uri? = null
+    customVideoUri: Uri? = null,
+    animateClock: Boolean = true
 ) {
-    val baseWallMillis = remember { System.currentTimeMillis() }
-    val phaseOffsetSec = remember(baseWallMillis) { (baseWallMillis % 2000L) / 1000.0 }
-    val elapsedSecondsState = remember { mutableDoubleStateOf(0.0) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val baseWallMillisState = remember { mutableLongStateOf(System.currentTimeMillis()) }
+    val phaseOffsetSec = remember { (baseWallMillisState.longValue % 2000L) / 1000.0 }
+    val elapsedWallSecondsState = remember { mutableDoubleStateOf(0.0) }
+    val phaseSecondsState = remember { mutableDoubleStateOf(0.0) }
+    val resyncEpoch = remember { mutableLongStateOf(0L) }
     val reusableCal = remember { Calendar.getInstance() }
 
-    LaunchedEffect(Unit) {
-        val startNanos = withFrameNanos { it }
-        while (true) {
-            withFrameNanos { nowNanos ->
-                elapsedSecondsState.doubleValue = (nowNanos - startNanos) / 1_000_000_000.0
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                resyncEpoch.longValue += 1L
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    if (animateClock) {
+        LaunchedEffect(Unit) {
+            var anchorWallMillis = baseWallMillisState.longValue
+            var anchorNanos = withFrameNanos { it }
+            var lastPhaseNanos = anchorNanos
+            var lastObservedEpoch = resyncEpoch.longValue
+            while (true) {
+                withFrameNanos { nowNanos ->
+                    val frameDeltaSec = ((nowNanos - lastPhaseNanos).coerceIn(0L, 100_000_000L)) / 1_000_000_000.0
+                    lastPhaseNanos = nowNanos
+                    phaseSecondsState.doubleValue += frameDeltaSec
+
+                    val wallNow = System.currentTimeMillis()
+                    val anchoredElapsedMs = (nowNanos - anchorNanos) / 1_000_000L
+                    val expectedWall = anchorWallMillis + anchoredElapsedMs
+                    val currentEpoch = resyncEpoch.longValue
+                    if (currentEpoch != lastObservedEpoch || abs(wallNow - expectedWall) > 1_000L) {
+                        lastObservedEpoch = currentEpoch
+                        anchorWallMillis = wallNow
+                        anchorNanos = nowNanos
+                        baseWallMillisState.longValue = wallNow
+                        elapsedWallSecondsState.doubleValue = 0.0
+                    } else {
+                        elapsedWallSecondsState.doubleValue = (nowNanos - anchorNanos) / 1_000_000_000.0
+                    }
+                }
             }
         }
     }
@@ -98,21 +139,22 @@ fun KlydoClockCabinet(
     val syncedRodColor = parseHexColorOrDefault(artMeta.pendulumRodColorHex, KlydoCyan)
     val syncedBobColor = parseHexColorOrDefault(artMeta.pendulumBobColorHex, KlydoViolet)
 
-    val elapsedSecondsProvider: () -> Double = remember {
-        { elapsedSecondsState.doubleValue }
+    val wallClockMillisProvider: () -> Long = remember(scrubOffsetMinutes) {
+        {
+            baseWallMillisState.longValue +
+                (elapsedWallSecondsState.doubleValue * 1000.0).toLong() +
+                (scrubOffsetMinutes * 60_000.0).toLong()
+        }
     }
     val phaseProvider: () -> Float = remember(phaseOffsetSec, scrubOffsetMinutes) {
-        { (elapsedSecondsState.doubleValue + phaseOffsetSec).toFloat() + (scrubOffsetMinutes * 0.15f) }
+        { (phaseSecondsState.doubleValue + phaseOffsetSec).toFloat() + (scrubOffsetMinutes * 0.15f) }
     }
     val pendulumSecondsProvider: () -> Float = remember(phaseOffsetSec) {
-        { (elapsedSecondsState.doubleValue + phaseOffsetSec).toFloat() }
+        { (phaseSecondsState.doubleValue + phaseOffsetSec).toFloat() }
     }
-    val minuteOfDayProvider: () -> Float = remember(baseWallMillis, scrubOffsetMinutes) {
+    val minuteOfDayProvider: () -> Float = remember(wallClockMillisProvider) {
         {
-            val effectiveMillis = baseWallMillis +
-                (elapsedSecondsState.doubleValue * 1000.0).toLong() +
-                (scrubOffsetMinutes * 60_000.0).toLong()
-            reusableCal.timeInMillis = effectiveMillis
+            reusableCal.timeInMillis = wallClockMillisProvider()
             val h = reusableCal.get(Calendar.HOUR_OF_DAY)
             val m = reusableCal.get(Calendar.MINUTE)
             val s = reusableCal.get(Calendar.SECOND)
@@ -261,9 +303,7 @@ fun KlydoClockCabinet(
                             minuteOfDayProvider = minuteOfDayProvider,
                             isNightMode = isNightMode,
                             blocksForDay = blocksForDay,
-                            baseWallMillis = baseWallMillis,
-                            elapsedSecondsProvider = elapsedSecondsProvider,
-                            scrubOffsetMinutes = scrubOffsetMinutes,
+                            wallClockMillisProvider = wallClockMillisProvider,
                             reusableCal = reusableCal,
                             animatedHandColor = animatedHandColor,
                             useDarkHands = useDarkHands,
@@ -313,9 +353,7 @@ fun KlydoClockCabinet(
                     minuteOfDayProvider = minuteOfDayProvider,
                     isNightMode = isNightMode,
                     blocksForDay = blocksForDay,
-                    baseWallMillis = baseWallMillis,
-                    elapsedSecondsProvider = elapsedSecondsProvider,
-                    scrubOffsetMinutes = scrubOffsetMinutes,
+                    wallClockMillisProvider = wallClockMillisProvider,
                     reusableCal = reusableCal,
                     animatedHandColor = animatedHandColor,
                     useDarkHands = useDarkHands,
@@ -353,9 +391,7 @@ private fun KlydoUpperDial(
     minuteOfDayProvider: () -> Float,
     isNightMode: Boolean,
     blocksForDay: List<ScheduleBlock>,
-    baseWallMillis: Long,
-    elapsedSecondsProvider: () -> Double,
-    scrubOffsetMinutes: Float,
+    wallClockMillisProvider: () -> Long,
     reusableCal: Calendar,
     animatedHandColor: Color,
     useDarkHands: Boolean,
@@ -382,9 +418,7 @@ private fun KlydoUpperDial(
         )
 
         Canvas(modifier = Modifier.fillMaxSize()) {
-            val effectiveMillis = baseWallMillis +
-                (elapsedSecondsProvider() * 1000.0).toLong() +
-                (scrubOffsetMinutes * 60_000.0).toLong()
+            val effectiveMillis = wallClockMillisProvider()
             reusableCal.timeInMillis = effectiveMillis
             val hour24 = reusableCal.get(Calendar.HOUR_OF_DAY)
             val minute = reusableCal.get(Calendar.MINUTE)

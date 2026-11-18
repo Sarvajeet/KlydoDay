@@ -54,6 +54,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -133,7 +134,8 @@ fun DisplaySettingsDialog(
     onSignInSuccess: () -> Unit,
     onSignOut: () -> Unit,
     onDismiss: () -> Unit,
-    initialTab: SettingsTab = SettingsTab.CLOCK
+    initialTab: SettingsTab = SettingsTab.CLOCK,
+    onTransformSettings: (((DisplaySettings) -> DisplaySettings) -> Unit)? = null
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -155,6 +157,15 @@ fun DisplaySettingsDialog(
         tabScrollState.scrollTo(0)
     }
 
+    val latestSettings by rememberUpdatedState(settings)
+    val applySettingsTransform: ((DisplaySettings) -> DisplaySettings) -> Unit = { transform ->
+        if (onTransformSettings != null) {
+            onTransformSettings(transform)
+        } else {
+            onUpdateSettings(transform(latestSettings))
+        }
+    }
+
     val chimePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
@@ -164,8 +175,8 @@ fun DisplaySettingsDialog(
                 chimeImportError = null
                 onImportCustomChime(uri)
                     .onSuccess { imported ->
-                        if (!settings.hourlyChimeEnabled) {
-                            onUpdateSettings(settings.copy(hourlyChimeEnabled = true))
+                        if (!latestSettings.hourlyChimeEnabled) {
+                            applySettingsTransform { it.copy(hourlyChimeEnabled = true) }
                         }
                         if (surfaceState.chimeInterval == ChimeInterval.OFF) {
                             onUpdateChimePreferences(
@@ -260,7 +271,7 @@ fun DisplaySettingsDialog(
                         when (tab) {
                             SettingsTab.CLOCK -> ClockSettingsTab(
                                 settings = settings,
-                                onUpdateSettings = onUpdateSettings
+                                onTransformSettings = applySettingsTransform
                             )
 
                             SettingsTab.CHIMES -> ChimesSettingsTab(
@@ -268,7 +279,7 @@ fun DisplaySettingsDialog(
                                 surfaceState = surfaceState,
                                 isImportingChime = isImportingChime,
                                 chimeImportError = chimeImportError,
-                                onUpdateSettings = onUpdateSettings,
+                                onTransformSettings = applySettingsTransform,
                                 onUpdateChimePreferences = onUpdateChimePreferences,
                                 onPickCustomChime = {
                                     chimeImportError = null
@@ -385,7 +396,7 @@ private fun SettingsTabBar(
 @Composable
 private fun ClockSettingsTab(
     settings: DisplaySettings,
-    onUpdateSettings: (DisplaySettings) -> Unit
+    onTransformSettings: ((DisplaySettings) -> DisplaySettings) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         SettingsSectionCard(eyebrow = "CLOCK FACE & FRAME") {
@@ -393,14 +404,14 @@ private fun ClockSettingsTab(
                 title = "Always-On Home Display",
                 subtitle = "Keep screen awake continuously",
                 checked = settings.keepScreenOn,
-                onCheckedChange = { onUpdateSettings(settings.copy(keepScreenOn = it)) }
+                onCheckedChange = { checked -> onTransformSettings { it.copy(keepScreenOn = checked) } }
             )
 
             SettingSwitchRow(
                 title = "Clock Cabinet Frame",
                 subtitle = "Show Baltic-birch plywood & charcoal housing",
                 checked = settings.showFrame,
-                onCheckedChange = { onUpdateSettings(settings.copy(showFrame = it)) },
+                onCheckedChange = { checked -> onTransformSettings { it.copy(showFrame = checked) } },
                 switchTestTag = "show_frame_switch"
             )
 
@@ -408,21 +419,21 @@ private fun ClockSettingsTab(
                 title = "Swinging Digital Pendulum",
                 subtitle = "Show classic lower pendulum bay",
                 checked = settings.pendulumEnabled,
-                onCheckedChange = { onUpdateSettings(settings.copy(pendulumEnabled = it)) }
+                onCheckedChange = { checked -> onTransformSettings { it.copy(pendulumEnabled = checked) } }
             )
 
             SettingSwitchRow(
                 title = "Auto-Cycle Klydo Art",
                 subtitle = "Rotate through gallery faces every hour",
                 checked = settings.autoCycleArt,
-                onCheckedChange = { onUpdateSettings(settings.copy(autoCycleArt = it)) }
+                onCheckedChange = { checked -> onTransformSettings { it.copy(autoCycleArt = checked) } }
             )
 
             SettingSwitchRow(
                 title = "24-Hour Digital Readout",
                 subtitle = "Display 14:30 instead of 2:30 PM",
                 checked = settings.clockFormat24h,
-                onCheckedChange = { onUpdateSettings(settings.copy(clockFormat24h = it)) }
+                onCheckedChange = { checked -> onTransformSettings { it.copy(clockFormat24h = checked) } }
             )
         }
 
@@ -431,7 +442,7 @@ private fun ClockSettingsTab(
                 title = "Night Mode Dimming (10 PM – 7 AM)",
                 subtitle = "Dim watch face softly & pause chimes overnight",
                 checked = settings.nightModeEnabled,
-                onCheckedChange = { onUpdateSettings(settings.copy(nightModeEnabled = it)) }
+                onCheckedChange = { checked -> onTransformSettings { it.copy(nightModeEnabled = checked) } }
             )
         }
     }

@@ -114,6 +114,7 @@ class ClockSurfaceStoreTest {
     fun `activeChimeLabel falls back to built-in tone when selected custom id missing`() = runTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val store = ClockSurfaceStore(context)
+        assertTrue(ClockSurfaceState().chimeInBackground)
 
         store.updateChimePreferences(
             chimeTone = com.example.audio.ChimeTone.TEMPLE_BOWL,

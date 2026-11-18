@@ -34,12 +34,14 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
@@ -186,44 +188,51 @@ private fun KlydoDreamContent(
         initialValue = WatchFaceLibraryState()
     )
 
+    val appContext = LocalContext.current.applicationContext
+    val latestSurfaceState by rememberUpdatedState(surfaceState)
     var nowMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var oledPhase by remember { mutableFloatStateOf(0f) }
     var showWakeHint by remember { mutableStateOf(true) }
     var lastDreamChimeKey by remember { mutableStateOf("") }
 
-    LaunchedEffect(surfaceState) {
+    LaunchedEffect(Unit) {
         while (true) {
             val now = System.currentTimeMillis()
             nowMillis = now
             // Complete gentle 2-minute anti-burn-in orbit
             oledPhase = ((now % 120_000L) / 120_000f) * (2f * PI.toFloat())
-            val settingsSnapshot = surfaceState.toDisplaySettingsSnapshot()
+            val state = latestSurfaceState
+            val settingsSnapshot = state.toDisplaySettingsSnapshot()
             val effectiveInterval = ChimeScheduleEvaluator.effectiveInterval(
-                hourlyChimeEnabled = surfaceState.hourlyChimeEnabled,
-                configuredInterval = surfaceState.chimeInterval
+                hourlyChimeEnabled = state.hourlyChimeEnabled,
+                configuredInterval = state.chimeInterval
             )
+            val knownLastKey = lastDreamChimeKey.ifBlank { ChimePlayer.lastPlayedDedupKey(appContext) }
             val trigger = ChimeScheduleEvaluator.evaluate(
                 nowMillis = now,
                 interval = effectiveInterval,
                 settings = settingsSnapshot,
-                lastChimeKey = lastDreamChimeKey
+                lastChimeKey = knownLastKey
             )
-            if (trigger != null) {
+            if (trigger != null && ChimePlayer.tryAcquireChimeSlot(appContext, trigger.dedupKey)) {
                 lastDreamChimeKey = trigger.dedupKey
-                val customFile = surfaceStore.resolveActiveCustomChimeFile(surfaceState)
+                val customFile = surfaceStore.resolveActiveCustomChimeFile(state)
                 when (trigger.kind) {
                     ChimeTriggerKind.FULL_HOUR -> ChimePlayer.playHourlyChime(
-                        tone = surfaceState.chimeTone,
-                        strikeHourCount = if (surfaceState.strikeHourCount) trigger.hour12 else 0,
-                        customFile = customFile
+                        tone = state.chimeTone,
+                        strikeHourCount = if (state.strikeHourCount) trigger.hour12 else 0,
+                        customFile = customFile,
+                        context = appContext
                     )
                     ChimeTriggerKind.SUB_INTERVAL -> ChimePlayer.playSubIntervalChime(
-                        tone = surfaceState.chimeTone,
-                        customFile = customFile
+                        tone = state.chimeTone,
+                        customFile = customFile,
+                        context = appContext
                     )
                 }
             }
-            delay(1000L)
+            val sleepMs = (1000L - (now % 1000L) + 15L).coerceIn(200L, 1020L)
+            delay(sleepMs)
         }
     }
 

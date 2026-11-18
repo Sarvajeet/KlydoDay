@@ -8,6 +8,7 @@ import androidx.credentials.CredentialManager
 import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialCancellationException
+import androidx.credentials.exceptions.NoCredentialException
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
@@ -67,6 +68,8 @@ fun attemptAutoSignIn(
             } else {
                 onUnauthenticated()
             }
+        } catch (_: NoCredentialException) {
+            onUnauthenticated()
         } catch (_: Exception) {
             onUnauthenticated()
         }
@@ -108,6 +111,9 @@ fun onGoogleSignInClicked(
         } catch (e: GetCredentialCancellationException) {
             Log.w("Auth", "Google Sign-In flow cancelled or dismissed: ${e.message}", e)
             onAuthCancelled()
+        } catch (e: NoCredentialException) {
+            Log.w("Auth", "No Google credentials available on device: ${e.message}")
+            onAuthError("No Google account available on this device. Add a Google account in device Settings to sync.")
         } catch (e: Exception) {
             Log.e("Auth", "Google Sign-In failed", e)
             onAuthError(e.localizedMessage ?: "Sign in failed. Please try again.")

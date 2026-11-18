@@ -214,14 +214,18 @@ class GuestKlydoRepository(private val context: Context) : KlydoDataSource {
         return try {
             val obj = JSONObject(raw)
             val favArr = obj.optJSONArray("favoriteKlydoIds")
-            val favs = buildList {
-                if (favArr != null) {
-                    for (i in 0 until favArr.length()) {
-                        val id = favArr.optString(i)
-                        if (id.isNotBlank()) add(id)
+            val favs = if (obj.has("favoriteKlydoIds")) {
+                buildList {
+                    if (favArr != null) {
+                        for (i in 0 until favArr.length()) {
+                            val id = favArr.optString(i)
+                            if (id.isNotBlank()) add(id)
+                        }
                     }
                 }
-            }.ifEmpty { listOf("bioluminescent_jelly") }
+            } else {
+                listOf("bioluminescent_jelly")
+            }
             DisplaySettings(
                 id = "default",
                 userId = GUEST_USER_ID,

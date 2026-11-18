@@ -63,7 +63,7 @@ internal fun ChimesSettingsTab(
     surfaceState: ClockSurfaceState,
     isImportingChime: Boolean,
     chimeImportError: String?,
-    onUpdateSettings: (DisplaySettings) -> Unit,
+    onTransformSettings: ((DisplaySettings) -> DisplaySettings) -> Unit,
     onUpdateChimePreferences: (
         interval: ChimeInterval?,
         tone: ChimeTone?,
@@ -134,7 +134,7 @@ internal fun ChimesSettingsTab(
                             )
                             .clickable {
                                 val enabled = interval != ChimeInterval.OFF
-                                onUpdateSettings(settings.copy(hourlyChimeEnabled = enabled))
+                                onTransformSettings { it.copy(hourlyChimeEnabled = enabled) }
                                 onUpdateChimePreferences(interval, null, null, null, null)
                             }
                             .padding(horizontal = 14.dp, vertical = 8.dp)
@@ -353,7 +353,7 @@ internal fun ChimesSettingsTab(
                 title = "Routine Block Chimes",
                 subtitle = "Sound a cue when scheduled blocks begin",
                 checked = settings.blockChimeEnabled,
-                onCheckedChange = { onUpdateSettings(settings.copy(blockChimeEnabled = it)) }
+                onCheckedChange = { checked -> onTransformSettings { it.copy(blockChimeEnabled = checked) } }
             )
 
             OutlinedButton(
